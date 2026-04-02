@@ -9,6 +9,7 @@ from flask_cors import CORS
 import traceback
 import threading
 import time
+import os
 
 from data import (
     get_all_live_quotes,
@@ -69,7 +70,9 @@ def _background_refresh():
             print(f"[bg] refresh error: {e}")
         time.sleep(60)
 
-threading.Thread(target=_background_refresh, daemon=True).start()
+# Background refresh thread (skip in serverless environments like Vercel)
+if not os.environ.get("VERCEL"):
+    threading.Thread(target=_background_refresh, daemon=True).start()
 
 # ─────────────────────────────────────────────────────────────────────────────
 # HELPERS

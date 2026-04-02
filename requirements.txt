@@ -13,8 +13,9 @@ numpy==1.26.3
 scikit-learn==1.4.0
 xgboost==2.0.3
 
-# Deep Learning (optional — comment out if not needed)
-tensorflow==2.15.0
+# Deep Learning
+# tensorflow removed — not compatible with Vercel's Python 3.12
+# model.py gracefully falls back to sklearn when TF is absent
 
 # Utilities
 requests==2.31.0
