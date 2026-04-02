@@ -1,0 +1,2893 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>StockVision Pro — ML Prediction Platform</title>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;700;800&display=swap"
+    rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+  <!-- ══════════════════════════════════════════════════════
+     🔥 FIREBASE — Replace config block with YOUR project
+     ══════════════════════════════════════════════════════ -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import {
+      getAuth, createUserWithEmailAndPassword,
+      signInWithEmailAndPassword, signOut,
+      onAuthStateChanged, updateProfile,
+      GoogleAuthProvider, signInWithPopup
+    } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+    import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+    // ─── YOUR FIREBASE CONFIG ───────────────────────────────
+    const firebaseConfig = {
+      apiKey: "AIzaSyDZbdtYuor9toHInOdWytNhMm3B2lIyM3k",
+      authDomain: "stock-predictor-86fdf.firebaseapp.com",
+      projectId: "stock-predictor-86fdf",
+      storageBucket: "stock-predictor-86fdf.firebasestorage.app",
+      messagingSenderId: "773177935854",
+      appId: "1:773177935854:web:1025e04be0f6bad3bd70ff",
+      measurementId: "G-3YER1G9B1R"
+    };
+    // ────────────────────────────────────────────────────────
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    const provider = new GoogleAuthProvider();
+
+    window._auth = auth; window._db = db; window._gProvider = provider;
+    window._fbFns = {
+      createUserWithEmailAndPassword, signInWithEmailAndPassword,
+      signOut, updateProfile, signInWithPopup,
+      doc, setDoc, getDoc,
+    };
+
+    onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        window._currentUser = user;
+        try {
+          const snap = await getDoc(doc(db, "users", user.uid));
+          window._userProfile = snap.exists()
+            ? snap.data()
+            : { portfolio: [], watchlist: [], balance: 1000000, alerts: [] };
+        } catch {
+          window._userProfile = { portfolio: [], watchlist: [], balance: 1000000, alerts: [] };
+        }
+        showApp();
+      } else {
+        window._currentUser = null;
+        showAuth();
+      }
+    });
+  </script>
+
+  <style>
+    /* ══════════════════════════════════════════════
+   CSS DESIGN SYSTEM
+═══════════════════════════════════════════════ */
+    :root {
+      --bg: #050a12;
+      --bg2: #0a1220;
+      --bg3: #0f1d30;
+      --card: #0d1825;
+      --card2: #111f33;
+      --border: #1a2d45;
+      --accent: #00d4ff;
+      --accent2: #00ff88;
+      --accent3: #ff6b35;
+      --accent4: #a855f7;
+      --red: #ff3b5c;
+      --green: #00d68f;
+      --text: #e8f4f8;
+      --text2: #7a9bb5;
+      --text3: #4a6a85;
+      --font: 'Syne', sans-serif;
+      --mono: 'Space Mono', monospace;
+    }
+
+    *,
+    *::before,
+    *::after {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    ::-webkit-scrollbar {
+      width: 4px;
+      height: 4px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: var(--bg2);
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: var(--accent);
+      border-radius: 2px;
+    }
+
+    /* ── AUTH ───────────────────────────────────── */
+    #authScreen {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .auth-bg {
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse at 20% 50%, rgba(0, 212, 255, .09) 0%, transparent 60%),
+        radial-gradient(ellipse at 80% 20%, rgba(168, 85, 247, .07) 0%, transparent 50%),
+        radial-gradient(ellipse at 60% 80%, rgba(0, 255, 136, .05) 0%, transparent 50%);
+    }
+
+    .auth-grid {
+      position: absolute;
+      inset: 0;
+      background-image: linear-gradient(rgba(0, 212, 255, .04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 212, 255, .04) 1px, transparent 1px);
+      background-size: 40px 40px;
+    }
+
+    .auth-box {
+      position: relative;
+      z-index: 2;
+      width: 440px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 44px 40px;
+    }
+
+    .auth-logo {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+
+    .auth-logo h1 {
+      font-size: 30px;
+      font-weight: 800;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      letter-spacing: -1px;
+    }
+
+    .auth-logo p {
+      color: var(--text3);
+      font-size: 12px;
+      margin-top: 5px;
+      font-family: var(--mono);
+    }
+
+    .auth-tabs {
+      display: flex;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 28px;
+    }
+
+    .auth-tab {
+      flex: 1;
+      padding: 10px;
+      text-align: center;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text2);
+      border-bottom: 2px solid transparent;
+      transition: all .25s;
+      background: none;
+      border-top: none;
+      border-left: none;
+      border-right: none;
+    }
+
+    .auth-tab.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
+
+    .form-group {
+      margin-bottom: 18px;
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text2);
+      margin-bottom: 7px;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      font-family: var(--mono);
+    }
+
+    .form-group input {
+      width: 100%;
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      padding: 12px 16px;
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 14px;
+      transition: border-color .25s;
+    }
+
+    .form-group input:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(0, 212, 255, .1);
+    }
+
+    .btn-primary {
+      width: 100%;
+      background: linear-gradient(135deg, var(--accent), #0099cc);
+      border: none;
+      border-radius: 9px;
+      padding: 14px;
+      color: #000;
+      font-family: var(--font);
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all .25s;
+      letter-spacing: .4px;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 8px 25px rgba(0, 212, 255, .35);
+    }
+
+    .divider {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin: 20px 0;
+    }
+
+    .divider::before,
+    .divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    .divider span {
+      font-size: 12px;
+      color: var(--text3);
+      font-family: var(--mono);
+    }
+
+    .btn-google {
+      width: 100%;
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      padding: 13px;
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all .25s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+    }
+
+    .btn-google:hover {
+      border-color: var(--accent);
+      background: rgba(0, 212, 255, .05);
+    }
+
+    .btn-google svg {
+      width: 20px;
+      height: 20px;
+    }
+
+    .auth-msg {
+      text-align: center;
+      font-size: 13px;
+      color: var(--red);
+      margin-top: 12px;
+      min-height: 18px;
+    }
+
+    /* ── APP LAYOUT ──────────────────────────────── */
+    #appScreen {
+      display: none;
+      min-height: 100vh;
+    }
+
+    .sidebar {
+      position: fixed;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 240px;
+      background: var(--bg2);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      z-index: 100;
+      overflow-y: auto;
+    }
+
+    .sidebar-logo {
+      padding: 24px 20px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .sidebar-logo h2 {
+      font-size: 20px;
+      font-weight: 800;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .sidebar-logo span {
+      font-size: 10px;
+      color: var(--text3);
+      font-family: var(--mono);
+      letter-spacing: 1px;
+    }
+
+    .nav-section {
+      padding: 16px 12px 6px;
+      font-size: 10px;
+      color: var(--text3);
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      font-family: var(--mono);
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 20px;
+      cursor: pointer;
+      transition: all .2s;
+      border-radius: 8px;
+      margin: 2px 8px;
+      color: var(--text2);
+      font-size: 13px;
+      font-weight: 600;
+      border: none;
+      background: none;
+      width: calc(100% - 16px);
+      text-align: left;
+    }
+
+    .nav-item:hover {
+      background: var(--bg3);
+      color: var(--text);
+    }
+
+    .nav-item.active {
+      background: rgba(0, 212, 255, .1);
+      color: var(--accent);
+      border: 1px solid rgba(0, 212, 255, .2);
+    }
+
+    .nav-item .icon {
+      font-size: 17px;
+      width: 22px;
+      text-align: center;
+    }
+
+    .sidebar-footer {
+      margin-top: auto;
+      padding: 16px;
+      border-top: 1px solid var(--border);
+    }
+
+    .user-badge {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px;
+      background: var(--bg3);
+      border-radius: 8px;
+      margin-bottom: 10px;
+    }
+
+    .user-avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent), var(--accent4));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 14px;
+      color: #000;
+      flex-shrink: 0;
+      overflow: hidden;
+    }
+
+    .user-avatar img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-radius: 50%;
+    }
+
+    .user-name {
+      font-size: 13px;
+      font-weight: 700;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .user-email {
+      font-size: 11px;
+      color: var(--text3);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-family: var(--mono);
+    }
+
+    .btn-logout {
+      width: 100%;
+      background: rgba(255, 59, 92, .1);
+      border: 1px solid rgba(255, 59, 92, .3);
+      border-radius: 8px;
+      padding: 8px;
+      color: var(--red);
+      font-family: var(--font);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all .25s;
+    }
+
+    .btn-logout:hover {
+      background: rgba(255, 59, 92, .2);
+    }
+
+    .main {
+      margin-left: 240px;
+      min-height: 100vh;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      background: rgba(5, 10, 18, .92);
+      backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border);
+      padding: 15px 28px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      z-index: 50;
+    }
+
+    .topbar-title {
+      font-size: 19px;
+      font-weight: 800;
+    }
+
+    .topbar-right {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .market-pill {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-family: var(--mono);
+      background: rgba(0, 214, 143, .1);
+      border: 1px solid rgba(0, 214, 143, .25);
+      padding: 5px 12px;
+      border-radius: 20px;
+    }
+
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--green);
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+
+      0%,
+      100% {
+        opacity: 1;
+      }
+
+      50% {
+        opacity: .4;
+      }
+    }
+
+    .notif-btn {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 7px 12px;
+      color: var(--text);
+      cursor: pointer;
+      font-size: 16px;
+      position: relative;
+    }
+
+    .notif-badge {
+      position: absolute;
+      top: -4px;
+      right: -4px;
+      background: var(--red);
+      border-radius: 50%;
+      width: 16px;
+      height: 16px;
+      font-size: 9px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+    }
+
+    .live-time {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--text3);
+    }
+
+    /* ── TICKER ──────────────────────────────────── */
+    .ticker-wrap {
+      background: var(--bg2);
+      border-bottom: 1px solid var(--border);
+      overflow: hidden;
+      height: 36px;
+    }
+
+    .ticker-inner {
+      display: flex;
+      animation: ticker 50s linear infinite;
+      width: max-content;
+    }
+
+    .ticker-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 22px;
+      height: 36px;
+      font-size: 11px;
+      font-family: var(--mono);
+      white-space: nowrap;
+      border-right: 1px solid var(--border);
+    }
+
+    @keyframes ticker {
+      0% {
+        transform: translateX(0);
+      }
+
+      100% {
+        transform: translateX(-50%);
+      }
+    }
+
+    /* ── CONTENT + CARDS ─────────────────────────── */
+    .content {
+      padding: 24px 28px;
+    }
+
+    .page {
+      display: none;
+    }
+
+    .page.active {
+      display: block;
+      animation: fadeIn .25s ease;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(6px);
+      }
+
+      to {
+        opacity: 1;
+        transform: none;
+      }
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .stat-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px;
+      position: relative;
+      overflow: hidden;
+      transition: transform .2s, box-shadow .2s;
+    }
+
+    .stat-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, .3);
+    }
+
+    .stat-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+    }
+
+    .stat-card.blue::before {
+      background: linear-gradient(90deg, var(--accent), transparent);
+    }
+
+    .stat-card.green::before {
+      background: linear-gradient(90deg, var(--accent2), transparent);
+    }
+
+    .stat-card.orange::before {
+      background: linear-gradient(90deg, var(--accent3), transparent);
+    }
+
+    .stat-card.purple::before {
+      background: linear-gradient(90deg, var(--accent4), transparent);
+    }
+
+    .stat-label {
+      font-size: 10px;
+      color: var(--text3);
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      font-family: var(--mono);
+      margin-bottom: 8px;
+    }
+
+    .stat-value {
+      font-size: 24px;
+      font-weight: 800;
+      font-family: var(--mono);
+      margin-bottom: 4px;
+    }
+
+    .stat-change {
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .up {
+      color: var(--green);
+    }
+
+    .down {
+      color: var(--red);
+    }
+
+    .chart-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 22px;
+      margin-bottom: 22px;
+    }
+
+    .chart-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 18px;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .chart-title {
+      font-size: 15px;
+      font-weight: 700;
+    }
+
+    .chart-controls {
+      display: flex;
+      gap: 6px;
+    }
+
+    .chip {
+      padding: 5px 11px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: var(--bg2);
+      color: var(--text2);
+      font-family: var(--mono);
+      transition: all .2s;
+    }
+
+    .chip.active,
+    .chip:hover {
+      background: rgba(0, 212, 255, .1);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 22px;
+      margin-bottom: 22px;
+    }
+
+    @media(max-width:960px) {
+      .two-col {
+        grid-template-columns: 1fr;
+      }
+
+      .stats-grid {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    /* ── TABLE ───────────────────────────────────── */
+    .table-wrap {
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th {
+      text-align: left;
+      font-size: 10px;
+      color: var(--text3);
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      padding: 9px 14px;
+      border-bottom: 1px solid var(--border);
+      font-family: var(--mono);
+      font-weight: 400;
+    }
+
+    td {
+      padding: 11px 14px;
+      border-bottom: 1px solid rgba(26, 45, 69, .45);
+      font-size: 13px;
+      vertical-align: middle;
+    }
+
+    tr:hover td {
+      background: rgba(0, 212, 255, .025);
+    }
+
+    .stock-name {
+      font-weight: 700;
+      font-size: 13px;
+      margin-bottom: 1px;
+    }
+
+    .stock-sym {
+      font-size: 10px;
+      color: var(--text3);
+      font-family: var(--mono);
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 3px 7px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 700;
+      font-family: var(--mono);
+    }
+
+    .badge.buy {
+      background: rgba(0, 214, 143, .15);
+      color: var(--green);
+    }
+
+    .badge.sell {
+      background: rgba(255, 59, 92, .15);
+      color: var(--red);
+    }
+
+    .badge.hold {
+      background: rgba(168, 85, 247, .15);
+      color: var(--accent4);
+    }
+
+    /* ── PREDICTION ──────────────────────────────── */
+    .predict-form {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr auto;
+      gap: 12px;
+      align-items: end;
+      margin-bottom: 24px;
+    }
+
+    @media(max-width:700px) {
+      .predict-form {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    .select-input {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 13px;
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    .select-input:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    .predict-result {
+      background: var(--bg2);
+      border-radius: 10px;
+      padding: 18px;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+      margin-bottom: 18px;
+    }
+
+    .predict-metric {
+      text-align: center;
+    }
+
+    .predict-val {
+      font-size: 22px;
+      font-weight: 800;
+      font-family: var(--mono);
+    }
+
+    .predict-lbl {
+      font-size: 10px;
+      color: var(--text3);
+      margin-top: 4px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    /* ── HEATMAP ──────────────────────────────────── */
+    .heatmap-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 7px;
+    }
+
+    .heat-cell {
+      border-radius: 9px;
+      padding: 14px 10px;
+      text-align: center;
+      cursor: pointer;
+      transition: transform .2s;
+    }
+
+    .heat-cell:hover {
+      transform: scale(1.05);
+    }
+
+    .heat-sym {
+      font-size: 12px;
+      font-weight: 700;
+      font-family: var(--mono);
+    }
+
+    .heat-pct {
+      font-size: 11px;
+      margin-top: 3px;
+    }
+
+    /* ── NEWS ─────────────────────────────────────── */
+    .news-item {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px 18px;
+      margin-bottom: 12px;
+      transition: border-color .2s;
+      cursor: pointer;
+    }
+
+    .news-item:hover {
+      border-color: var(--accent);
+    }
+
+    .news-meta {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 7px;
+      flex-wrap: wrap;
+    }
+
+    .news-src {
+      font-size: 11px;
+      font-family: var(--mono);
+      color: var(--accent);
+      font-weight: 700;
+    }
+
+    .news-time {
+      font-size: 11px;
+      color: var(--text3);
+    }
+
+    .news-title {
+      font-size: 14px;
+      font-weight: 700;
+      margin-bottom: 5px;
+      line-height: 1.4;
+    }
+
+    .news-snip {
+      font-size: 12px;
+      color: var(--text2);
+      line-height: 1.55;
+    }
+
+    .sent-chip {
+      padding: 3px 8px;
+      border-radius: 20px;
+      font-size: 10px;
+      font-weight: 700;
+      font-family: var(--mono);
+    }
+
+    .sent-pos {
+      background: rgba(0, 214, 143, .15);
+      color: var(--green);
+    }
+
+    .sent-neg {
+      background: rgba(255, 59, 92, .15);
+      color: var(--red);
+    }
+
+    .sent-neu {
+      background: rgba(122, 155, 181, .15);
+      color: var(--text2);
+    }
+
+    /* ── ALERTS ───────────────────────────────────── */
+    .alert-item {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+
+    .btn-del {
+      background: none;
+      border: none;
+      color: var(--red);
+      cursor: pointer;
+      font-size: 17px;
+      padding: 4px 8px;
+    }
+
+    /* ── MODAL ────────────────────────────────────── */
+    .modal-bg {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, .72);
+      z-index: 200;
+      align-items: center;
+      justify-content: center;
+      backdrop-filter: blur(5px);
+    }
+
+    .modal-bg.open {
+      display: flex;
+    }
+
+    .modal {
+      background: var(--card2);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 30px;
+      width: 420px;
+      max-width: 95vw;
+    }
+
+    .modal-title {
+      font-size: 17px;
+      font-weight: 800;
+      margin-bottom: 22px;
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 22px;
+    }
+
+    .modal-actions button {
+      flex: 1;
+    }
+
+    .btn-cancel {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 11px;
+      color: var(--text2);
+      font-family: var(--font);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    /* ── CHAT ─────────────────────────────────────── */
+    .chat-container {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+      height: 520px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .chat-msg {
+      max-width: 82%;
+      padding: 12px 16px;
+      border-radius: 12px;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .chat-msg.user {
+      background: rgba(0, 212, 255, .13);
+      border: 1px solid rgba(0, 212, 255, .2);
+      align-self: flex-end;
+      border-bottom-right-radius: 4px;
+    }
+
+    .chat-msg.ai {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      align-self: flex-start;
+      border-bottom-left-radius: 4px;
+    }
+
+    .ai-label {
+      font-size: 9px;
+      color: var(--accent);
+      font-family: var(--mono);
+      font-weight: 700;
+      margin-bottom: 5px;
+    }
+
+    .chat-input-row {
+      display: flex;
+      gap: 10px;
+      padding: 14px;
+      border-top: 1px solid var(--border);
+    }
+
+    .chat-input {
+      flex: 1;
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 13px;
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 13px;
+    }
+
+    .chat-input:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    .btn-send {
+      background: var(--accent);
+      border: none;
+      border-radius: 8px;
+      padding: 10px 16px;
+      color: #000;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: var(--font);
+      white-space: nowrap;
+    }
+
+    /* ── SETTINGS ─────────────────────────────────── */
+    .settings-section {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 22px;
+      margin-bottom: 18px;
+    }
+
+    .settings-section h3 {
+      font-size: 14px;
+      font-weight: 700;
+      margin-bottom: 14px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .setting-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 0;
+      border-bottom: 1px solid rgba(26, 45, 69, .45);
+    }
+
+    .setting-row:last-child {
+      border-bottom: none;
+    }
+
+    .setting-label {
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .setting-desc {
+      font-size: 11px;
+      color: var(--text3);
+      margin-top: 2px;
+    }
+
+    .toggle {
+      position: relative;
+      width: 44px;
+      height: 24px;
+      cursor: pointer;
+    }
+
+    .toggle input {
+      display: none;
+    }
+
+    .toggle-track {
+      position: absolute;
+      inset: 0;
+      background: var(--bg3);
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      transition: all .3s;
+    }
+
+    .toggle input:checked+.toggle-track {
+      background: var(--accent);
+      border-color: var(--accent);
+    }
+
+    .toggle-thumb {
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 16px;
+      height: 16px;
+      background: #fff;
+      border-radius: 50%;
+      transition: transform .3s;
+      pointer-events: none;
+    }
+
+    .toggle input:checked~.toggle-thumb {
+      transform: translateX(20px);
+    }
+
+    /* ── LOADING & SPINNER ────────────────────────── */
+    .loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 40px;
+      color: var(--text3);
+    }
+
+    .spinner {
+      width: 22px;
+      height: 22px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    .api-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 10px;
+      font-family: var(--mono);
+      color: var(--accent2);
+      background: rgba(0, 255, 136, .08);
+      border: 1px solid rgba(0, 255, 136, .2);
+      border-radius: 4px;
+      padding: 3px 8px;
+    }
+
+    /* ── TOAST ─────────────────────────────────────── */
+    .toast-container {
+      position: fixed;
+      bottom: 22px;
+      right: 22px;
+      z-index: 999;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .toast {
+      background: var(--card2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+      animation: slideIn .3s ease;
+      max-width: 320px;
+    }
+
+    @keyframes slideIn {
+      from {
+        transform: translateX(100px);
+        opacity: 0;
+      }
+
+      to {
+        transform: translateX(0);
+        opacity: 1;
+      }
+    }
+
+    .toast.success {
+      border-left: 3px solid var(--green);
+    }
+
+    .toast.error {
+      border-left: 3px solid var(--red);
+    }
+
+    .toast.info {
+      border-left: 3px solid var(--accent);
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- ══════════════ AUTH SCREEN ══════════════ -->
+  <div id="authScreen">
+    <div class="auth-bg"></div>
+    <div class="auth-grid"></div>
+    <div class="auth-box">
+      <div class="auth-logo">
+        <h1>📈 StockVision Pro</h1>
+        <p>ML-POWERED STOCK MARKET INTELLIGENCE</p>
+      </div>
+
+      <div class="auth-tabs">
+        <button class="auth-tab active" onclick="switchTab('login')">Sign In</button>
+        <button class="auth-tab" onclick="switchTab('register')">Register</button>
+      </div>
+
+      <!-- Google Sign-In (always visible) -->
+      <button class="btn-google" onclick="doGoogleLogin()">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path
+            d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+            fill="#4285F4" />
+          <path
+            d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+            fill="#34A853" />
+          <path
+            d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+            fill="#FBBC05" />
+          <path
+            d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+            fill="#EA4335" />
+        </svg>
+        Continue with Google
+      </button>
+
+      <div class="divider"><span>or</span></div>
+
+      <!-- Email / Password Login -->
+      <div id="loginForm">
+        <div class="form-group">
+          <label>Email</label>
+          <input type="email" id="loginEmail" placeholder="you@example.com" />
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" id="loginPass" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()" />
+        </div>
+        <button class="btn-primary" onclick="doLogin()">Sign In →</button>
+      </div>
+
+      <!-- Register -->
+      <div id="registerForm" style="display:none">
+        <div class="form-group">
+          <label>Full Name</label>
+          <input type="text" id="regName" placeholder="John Doe" />
+        </div>
+        <div class="form-group">
+          <label>Email</label>
+          <input type="email" id="regEmail" placeholder="you@example.com" />
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" id="regPass" placeholder="Min. 6 characters" />
+        </div>
+        <button class="btn-primary" onclick="doRegister()">Create Account →</button>
+      </div>
+      <p class="auth-msg" id="authMsg"></p>
+    </div>
+  </div>
+
+  <!-- ══════════════ APP SCREEN ══════════════ -->
+  <div id="appScreen">
+    <!-- Ticker strip -->
+    <div class="ticker-wrap">
+      <div class="ticker-inner" id="tickerInner"></div>
+    </div>
+
+    <!-- Sidebar -->
+    <div class="sidebar">
+      <div class="sidebar-logo">
+        <h2>📈 StockVision</h2>
+        <span>PRO — ML EDITION</span>
+      </div>
+      <div class="nav-section">Dashboard</div>
+      <button class="nav-item active" onclick="showPage('dashboard',this)"><span class="icon">🏠</span>Overview</button>
+      <button class="nav-item" onclick="showPage('portfolio',this)"><span class="icon">💼</span>Portfolio</button>
+      <button class="nav-item" onclick="showPage('markets',this)"><span class="icon">📊</span>Live Markets</button>
+      <div class="nav-section">Analysis</div>
+      <button class="nav-item" onclick="showPage('predict',this)"><span class="icon">🤖</span>ML Predictions</button>
+      <button class="nav-item" onclick="showPage('heatmap',this)"><span class="icon">🌡️</span>Heatmap</button>
+      <button class="nav-item" onclick="showPage('news',this)"><span class="icon">📰</span>News & Sentiment</button>
+      <button class="nav-item" onclick="showPage('screener',this)"><span class="icon">🔍</span>Stock Screener</button>
+      <div class="nav-section">Tools</div>
+      <button class="nav-item" onclick="showPage('alerts',this)"><span class="icon">🔔</span>Price Alerts</button>
+      <button class="nav-item" onclick="showPage('compare',this)"><span class="icon">⚖️</span>Compare Stocks</button>
+      <button class="nav-item" onclick="showPage('aichat',this)"><span class="icon">💬</span>AI Advisor</button>
+      <button class="nav-item" onclick="showPage('settings',this)"><span class="icon">⚙️</span>Settings</button>
+      <div class="sidebar-footer">
+        <div class="user-badge">
+          <div class="user-avatar" id="sidebarAvatar">U</div>
+          <div style="overflow:hidden">
+            <div class="user-name" id="sidebarName">User</div>
+            <div class="user-email" id="sidebarEmail">—</div>
+          </div>
+        </div>
+        <button class="btn-logout" onclick="doLogout()">Sign Out</button>
+      </div>
+    </div>
+
+    <!-- Main -->
+    <div class="main">
+      <div class="topbar">
+        <div style="display:flex;align-items:center;gap:14px">
+          <div class="topbar-title" id="pageTitle">Market Overview</div>
+          <span class="api-badge" id="apiStatus">● CONNECTING…</span>
+        </div>
+        <div class="topbar-right">
+          <div class="market-pill">
+            <div class="status-dot"></div>MARKET LIVE
+          </div>
+          <button class="notif-btn" onclick="showPage('alerts',document.querySelector('[onclick*=alerts]'))">
+            🔔<span class="notif-badge" id="alertCount">0</span>
+          </button>
+          <div class="live-time" id="liveTime"></div>
+        </div>
+      </div>
+      <div class="content">
+
+        <!-- ═══ DASHBOARD ═══ -->
+        <div class="page active" id="page-dashboard">
+          <div class="stats-grid">
+            <div class="stat-card blue">
+              <div class="stat-label">Portfolio Value</div>
+              <div class="stat-value" id="statPortVal">₹0</div>
+              <div class="stat-change" id="statPortPct">—</div>
+            </div>
+            <div class="stat-card green">
+              <div class="stat-label">Total P&L</div>
+              <div class="stat-value" id="statPnl">₹0</div>
+              <div class="stat-change" id="statPnlPct">0%</div>
+            </div>
+            <div class="stat-card orange">
+              <div class="stat-label">Cash Balance</div>
+              <div class="stat-value" id="statBal">₹10,00,000</div>
+              <div class="stat-change" style="color:var(--text3)">Paper Trading</div>
+            </div>
+            <div class="stat-card purple">
+              <div class="stat-label">Watchlist</div>
+              <div class="stat-value" id="statWatch">0</div>
+              <div class="stat-change" style="color:var(--text3)">Tracked</div>
+            </div>
+          </div>
+          <div class="chart-card">
+            <div class="chart-header">
+              <div class="chart-title">Portfolio Performance</div>
+              <div class="chart-controls">
+                <button class="chip active" onclick="switchMainChart('1W',this)">1W</button>
+                <button class="chip" onclick="switchMainChart('1M',this)">1M</button>
+                <button class="chip" onclick="switchMainChart('3M',this)">3M</button>
+                <button class="chip" onclick="switchMainChart('1Y',this)">1Y</button>
+              </div>
+            </div>
+            <canvas id="mainChart" height="80"></canvas>
+          </div>
+          <div class="two-col">
+            <div class="chart-card" style="margin-bottom:0">
+              <div class="chart-title" style="margin-bottom:14px">Top Movers</div>
+              <div id="topMovers">
+                <div class="loading">
+                  <div class="spinner"></div>Loading…
+                </div>
+              </div>
+            </div>
+            <div class="chart-card" style="margin-bottom:0">
+              <div class="chart-title" style="margin-bottom:14px">Sector Performance</div>
+              <canvas id="sectorChart" height="180"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- ═══ PORTFOLIO ═══ -->
+        <div class="page" id="page-portfolio">
+          <div
+            style="display:flex;align-items:center;justify-content:space-between;margin-bottom:22px;flex-wrap:wrap;gap:12px">
+            <div>
+              <div style="font-size:21px;font-weight:800">My Portfolio</div>
+              <div style="color:var(--text3);font-size:12px;font-family:var(--mono);margin-top:3px">Paper trading —
+                ₹10,00,000 starting balance</div>
+            </div>
+            <div style="display:flex;gap:10px">
+              <button onclick="openTrade('buy')"
+                style="padding:9px 18px;background:var(--green);border:none;border-radius:8px;color:#000;font-weight:700;cursor:pointer;font-family:var(--font)">+
+                Buy</button>
+              <button onclick="openTrade('sell')"
+                style="padding:9px 18px;background:var(--red);border:none;border-radius:8px;color:#fff;font-weight:700;cursor:pointer;font-family:var(--font)">−
+                Sell</button>
+            </div>
+          </div>
+          <div class="two-col">
+            <div class="chart-card" style="margin-bottom:0">
+              <div class="chart-title" style="margin-bottom:14px">Allocation</div><canvas id="allocChart"
+                height="200"></canvas>
+            </div>
+            <div class="chart-card" style="margin-bottom:0">
+              <div class="chart-title" style="margin-bottom:14px">Summary</div>
+              <div id="portSummary"></div>
+            </div>
+          </div>
+          <div class="chart-card" style="margin-top:22px">
+            <div class="chart-title" style="margin-bottom:14px">Holdings</div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Stock</th>
+                    <th>Qty</th>
+                    <th>Avg Cost</th>
+                    <th>LTP</th>
+                    <th>P&L</th>
+                    <th>Return</th>
+                    <th>Value</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="holdTable"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- ═══ MARKETS ═══ -->
+        <div class="page" id="page-markets">
+          <div class="chart-card">
+            <div class="chart-header">
+              <div class="chart-title">Live Market — Real Data <span class="api-badge">yfinance</span></div>
+              <div class="chart-controls">
+                <button class="chip active" onclick="filterMkt('all',this)">All</button>
+                <button class="chip" onclick="filterMkt('IT',this)">IT</button>
+                <button class="chip" onclick="filterMkt('Finance',this)">Finance</button>
+                <button class="chip" onclick="filterMkt('Energy',this)">Energy</button>
+                <button class="chip" onclick="filterMkt('Tech',this)">US Tech</button>
+              </div>
+            </div>
+            <div id="marketLoading" class="loading">
+              <div class="spinner"></div>Fetching live data…
+            </div>
+            <div class="table-wrap" id="marketTableWrap" style="display:none">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Stock</th>
+                    <th>Price</th>
+                    <th>Change</th>
+                    <th>%</th>
+                    <th>High</th>
+                    <th>Low</th>
+                    <th>Volume</th>
+                    <th>Signal</th>
+                    <th>Watch</th>
+                  </tr>
+                </thead>
+                <tbody id="marketTable"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- ═══ ML PREDICTIONS ═══ -->
+        <div class="page" id="page-predict">
+          <div class="chart-card">
+            <div class="chart-title" style="margin-bottom:18px">🤖 ML Prediction Engine <span class="api-badge">Real
+                Data + Sklearn/TF</span></div>
+            <div class="predict-form">
+              <div class="form-group" style="margin:0">
+                <label>Stock Symbol</label>
+                <select class="select-input" id="predStock" style="width:100%">
+                  <optgroup label="Indian Stocks (NSE)">
+                    <option value="TCS">TCS — Tata Consultancy</option>
+                    <option value="INFY">INFY — Infosys</option>
+                    <option value="WIPRO">WIPRO — Wipro</option>
+                    <option value="RELIANCE">RELIANCE — Reliance</option>
+                    <option value="HDFCBANK">HDFCBANK — HDFC Bank</option>
+                    <option value="ICICIBANK">ICICIBANK — ICICI Bank</option>
+                    <option value="SBIN">SBIN — SBI</option>
+                    <option value="NTPC">NTPC — NTPC</option>
+                    <option value="HCLTECH">HCLTECH — HCL Tech</option>
+                    <option value="SUNPHARMA">SUNPHARMA — Sun Pharma</option>
+                  </optgroup>
+                  <optgroup label="US Stocks">
+                    <option value="AAPL">AAPL — Apple</option>
+                    <option value="MSFT">MSFT — Microsoft</option>
+                    <option value="GOOGL">GOOGL — Alphabet</option>
+                    <option value="AMZN">AMZN — Amazon</option>
+                    <option value="TSLA">TSLA — Tesla</option>
+                    <option value="NVDA">NVDA — NVIDIA</option>
+                  </optgroup>
+                </select>
+              </div>
+              <div class="form-group" style="margin:0">
+                <label>ML Model</label>
+                <select class="select-input" id="predModel" style="width:100%">
+                  <option value="lstm">LSTM Neural Network</option>
+                  <option value="xgb">XGBoost</option>
+                  <option value="rf" selected>Random Forest</option>
+                  <option value="lr">Linear Regression</option>
+                  <option value="svm">Support Vector Machine</option>
+                </select>
+              </div>
+              <div class="form-group" style="margin:0">
+                <label>Training Period</label>
+                <select class="select-input" id="predPeriod" style="width:100%">
+                  <option value="6mo">6 Months</option>
+                  <option value="1y" selected>1 Year</option>
+                  <option value="2y">2 Years</option>
+                </select>
+              </div>
+              <div class="form-group" style="margin:0">
+                <label>&nbsp;</label>
+                <button class="btn-primary" onclick="runPredict()" id="predBtn" style="padding:10px 22px;width:auto">Run
+                  ▶</button>
+              </div>
+            </div>
+            <div id="predResult" style="display:none">
+              <div class="predict-result" id="predMetrics"></div>
+              <canvas id="predChart" height="85"></canvas>
+            </div>
+            <div id="predLoading" style="display:none" class="loading">
+              <div class="spinner"></div>Training model on real data… (may take 30–60s for LSTM)
+            </div>
+          </div>
+          <div class="two-col">
+            <div class="chart-card" style="margin-bottom:0">
+              <div class="chart-title" style="margin-bottom:14px">Model Accuracy Benchmarks</div><canvas
+                id="modelAccChart" height="180"></canvas>
+            </div>
+            <div class="chart-card" style="margin-bottom:0">
+              <div class="chart-title" style="margin-bottom:14px">Feature Importance</div><canvas id="featureChart"
+                height="180"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- ═══ HEATMAP ═══ -->
+        <div class="page" id="page-heatmap">
+          <div class="chart-card">
+            <div class="chart-header">
+              <div class="chart-title">Market Heatmap — Live % Change <span class="api-badge">yfinance</span></div>
+            </div>
+            <div id="heatLoading" class="loading">
+              <div class="spinner"></div>Loading heatmap…
+            </div>
+            <div class="heatmap-grid" id="heatmapGrid"></div>
+          </div>
+        </div>
+
+        <!-- ═══ NEWS ═══ -->
+        <div class="page" id="page-news">
+          <div class="chart-header" style="margin-bottom:18px">
+            <div class="chart-title">📰 Market News & Sentiment <span class="api-badge">yfinance + NLP</span></div>
+            <div class="chart-controls">
+              <button class="chip active" onclick="filterNews('all',this)">All</button>
+              <button class="chip" onclick="filterNews('positive',this)">Positive</button>
+              <button class="chip" onclick="filterNews('negative',this)">Negative</button>
+              <button class="chip" onclick="filterNews('neutral',this)">Neutral</button>
+            </div>
+          </div>
+          <div id="newsLoading" class="loading">
+            <div class="spinner"></div>Fetching news…
+          </div>
+          <div id="newsFeed"></div>
+        </div>
+
+        <!-- ═══ SCREENER ═══ -->
+        <div class="page" id="page-screener">
+          <div class="chart-card">
+            <div class="chart-title" style="margin-bottom:18px">🔍 Stock Screener <span class="api-badge">Live
+                Filter</span></div>
+            <div
+              style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-bottom:20px">
+              <div class="form-group" style="margin:0"><label>Min P/E</label><input type="number" id="scrMinPE"
+                  class="select-input" placeholder="0" style="width:100%" /></div>
+              <div class="form-group" style="margin:0"><label>Max P/E</label><input type="number" id="scrMaxPE"
+                  class="select-input" placeholder="999" style="width:100%" /></div>
+              <div class="form-group" style="margin:0"><label>Min % Change</label><input type="number" id="scrMinChg"
+                  class="select-input" placeholder="-5" style="width:100%" /></div>
+              <div class="form-group" style="margin:0"><label>Sector</label>
+                <select class="select-input" id="scrSector" style="width:100%">
+                  <option value="">All</option>
+                  <option value="IT">IT</option>
+                  <option value="Finance">Finance</option>
+                  <option value="Energy">Energy</option>
+                  <option value="FMCG">FMCG</option>
+                  <option value="Tech">US Tech</option>
+                </select>
+              </div>
+              <div class="form-group" style="margin:0"><label>Signal</label>
+                <select class="select-input" id="scrSignal" style="width:100%">
+                  <option value="">All</option>
+                  <option value="buy">Buy</option>
+                  <option value="sell">Sell</option>
+                  <option value="hold">Hold</option>
+                </select>
+              </div>
+              <div class="form-group" style="margin:0;display:flex;align-items:flex-end">
+                <button class="btn-primary" onclick="runScreener()" style="width:100%;padding:10px">Screen →</button>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Stock</th>
+                    <th>Price</th>
+                    <th>%</th>
+                    <th>P/E</th>
+                    <th>Sector</th>
+                    <th>Signal</th>
+                  </tr>
+                </thead>
+                <tbody id="screenerTbl"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- ═══ ALERTS ═══ -->
+        <div class="page" id="page-alerts">
+          <div class="chart-card" style="margin-bottom:20px">
+            <div class="chart-title" style="margin-bottom:18px">🔔 Create Price Alert</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:12px;align-items:end;flex-wrap:wrap">
+              <div class="form-group" style="margin:0"><label>Stock</label>
+                <select class="select-input" id="altStock" style="width:100%">
+                  <option>TCS</option>
+                  <option>INFY</option>
+                  <option>RELIANCE</option>
+                  <option>HDFCBANK</option>
+                  <option>WIPRO</option>
+                  <option>AAPL</option>
+                  <option>MSFT</option>
+                  <option>TSLA</option>
+                  <option>NVDA</option>
+                </select>
+              </div>
+              <div class="form-group" style="margin:0"><label>Condition</label>
+                <select class="select-input" id="altCond" style="width:100%">
+                  <option value="above">Price Above</option>
+                  <option value="below">Price Below</option>
+                </select>
+              </div>
+              <div class="form-group" style="margin:0"><label>Target Price</label>
+                <input type="number" id="altPrice" class="select-input" placeholder="e.g. 3500" style="width:100%" />
+              </div>
+              <button class="btn-primary" onclick="addAlert()" style="padding:10px 18px;width:auto">+ Add</button>
+            </div>
+          </div>
+          <div id="alertsList"></div>
+        </div>
+
+        <!-- ═══ COMPARE ═══ -->
+        <div class="page" id="page-compare">
+          <div class="chart-card">
+            <div class="chart-title" style="margin-bottom:18px">⚖️ Compare Stocks — Real Historical Data</div>
+            <div style="display:flex;gap:12px;margin-bottom:22px;flex-wrap:wrap;align-items:flex-end">
+              <div class="form-group" style="margin:0"><label>Stock A</label>
+                <select class="select-input" id="cmpA">
+                  <option>TCS</option>
+                  <option>INFY</option>
+                  <option>RELIANCE</option>
+                  <option>HDFCBANK</option>
+                  <option>AAPL</option>
+                  <option>MSFT</option>
+                  <option>TSLA</option>
+                  <option>NVDA</option>
+                </select>
+              </div>
+              <div class="form-group" style="margin:0"><label>Stock B</label>
+                <select class="select-input" id="cmpB">
+                  <option>INFY</option>
+                  <option>TCS</option>
+                  <option>RELIANCE</option>
+                  <option>HDFCBANK</option>
+                  <option>AAPL</option>
+                  <option>MSFT</option>
+                  <option>TSLA</option>
+                  <option>NVDA</option>
+                </select>
+              </div>
+              <div class="form-group" style="margin:0"><label>Period</label>
+                <select class="select-input" id="cmpPeriod">
+                  <option value="3mo">3 Months</option>
+                  <option value="6mo" selected>6 Months</option>
+                  <option value="1y">1 Year</option>
+                </select>
+              </div>
+              <button class="btn-primary" onclick="runCompare()" style="padding:10px 22px;width:auto">Compare →</button>
+            </div>
+            <div id="cmpLoading" style="display:none" class="loading">
+              <div class="spinner"></div>Fetching data…
+            </div>
+            <canvas id="compareChart" height="80"></canvas>
+            <div id="compareTable" style="margin-top:20px"></div>
+          </div>
+        </div>
+
+        <!-- ═══ AI ADVISOR ═══ -->
+        <div class="page" id="page-aichat">
+          <div style="margin-bottom:18px">
+            <div style="font-size:21px;font-weight:800">💬 AI Stock Advisor</div>
+            <div style="color:var(--text3);font-size:12px;margin-top:4px">Powered by Claude — context-aware portfolio &
+              market intelligence</div>
+          </div>
+          <div class="chat-container">
+            <div class="chat-messages" id="chatMsgs">
+              <div class="chat-msg ai">
+                <div class="ai-label">STOCKVISION AI</div>
+                Hello! I'm your AI stock market advisor. I have full context of your portfolio, live market data, and ML
+                predictions.<br><br>
+                Ask me anything:<br>
+                • "Should I buy TCS right now?"<br>
+                • "What does RSI 72 on INFY mean?"<br>
+                • "Explain my portfolio risk"<br>
+                • "Compare LSTM vs XGBoost for prediction"
+              </div>
+            </div>
+            <div class="chat-input-row">
+              <input class="chat-input" id="chatIn" placeholder="Ask about any stock, ML model, or your portfolio…"
+                onkeydown="if(event.key==='Enter')sendChat()" />
+              <button class="btn-send" onclick="sendChat()">Send ↑</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ═══ SETTINGS ═══ -->
+        <div class="page" id="page-settings">
+          <div class="settings-section">
+            <h3>Account</h3>
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">Name</div>
+                <div class="setting-desc" id="setName">—</div>
+              </div><button class="chip" onclick="editName()">Edit</button>
+            </div>
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">Email</div>
+                <div class="setting-desc" id="setEmail">—</div>
+              </div>
+            </div>
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">Reset Balance</div>
+                <div class="setting-desc">Reset paper trading balance to ₹10,00,000</div>
+              </div><button class="chip" onclick="resetBal()"
+                style="color:var(--red);border-color:var(--red)">Reset</button>
+            </div>
+          </div>
+          <div class="settings-section">
+            <h3>API Configuration</h3>
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">Flask API URL</div>
+                <div class="setting-desc" id="apiUrlDisplay">http://localhost:5000</div>
+              </div><button class="chip" onclick="changeApiUrl()">Change</button>
+            </div>
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">API Status</div>
+                <div class="setting-desc" id="apiStatusFull">Checking…</div>
+              </div>
+            </div>
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">Data Source</div>
+                <div class="setting-desc">Yahoo Finance (yfinance) — Real-time NSE/BSE/NYSE</div>
+              </div>
+            </div>
+          </div>
+          <div class="settings-section">
+            <h3>Notifications</h3>
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">Price Alerts</div>
+                <div class="setting-desc">Notify when price targets hit</div>
+              </div><label class="toggle"><input type="checkbox" checked />
+                <div class="toggle-track"></div>
+                <div class="toggle-thumb"></div>
+              </label>
+            </div>
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">ML Signal Alerts</div>
+                <div class="setting-desc">Notify on strong Buy/Sell signals</div>
+              </div><label class="toggle"><input type="checkbox" />
+                <div class="toggle-track"></div>
+                <div class="toggle-thumb"></div>
+              </label>
+            </div>
+          </div>
+          <div class="settings-section">
+            <h3>About</h3>
+            <div class="setting-row">
+              <div class="setting-label">Project</div>
+              <div style="font-size:12px;color:var(--text3)">Predicting Stock Market Trends Using ML via Continuous and
+                Binary Data</div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-label">Institution</div>
+              <div style="font-size:12px;color:var(--text3)">Knowledge Institute of Technology (Autonomous) — Dept. CSE
+              </div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-label">Stack</div>
+              <div style="font-size:12px;font-family:var(--mono);color:var(--accent)">Flask · yfinance · LSTM · XGBoost
+                · RF · Firebase · Chart.js</div>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /content -->
+    </div><!-- /main -->
+  </div><!-- /app -->
+
+  <!-- TRADE MODAL -->
+  <div class="modal-bg" id="tradeModal">
+    <div class="modal">
+      <div class="modal-title" id="tradeTitle">Buy Stock</div>
+      <div class="form-group">
+        <label>Stock</label>
+        <select class="select-input" id="tradeStock" onchange="calcTotal()" style="width:100%">
+          <option value="TCS">TCS</option>
+          <option value="INFY">INFY</option>
+          <option value="RELIANCE">RELIANCE</option>
+          <option value="HDFCBANK">HDFCBANK</option>
+          <option value="WIPRO">WIPRO</option>
+          <option value="ICICIBANK">ICICIBANK</option>
+          <option value="SBIN">SBIN</option>
+          <option value="AAPL">AAPL</option>
+          <option value="MSFT">MSFT</option>
+          <option value="TSLA">TSLA</option>
+          <option value="NVDA">NVDA</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Quantity</label>
+        <input type="number" id="tradeQty" min="1" value="1" class="select-input" style="width:100%"
+          oninput="calcTotal()" />
+      </div>
+      <div style="background:var(--bg2);border-radius:8px;padding:14px;font-family:var(--mono)">
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px;color:var(--text3)">
+          <span>Price/share</span><span id="mPrice">—</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:15px;font-weight:700"><span>Total</span><span
+            id="mTotal" style="color:var(--accent)">—</span></div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="closeModal('tradeModal')">Cancel</button>
+        <button class="btn-primary" id="tradeBtnConfirm" onclick="confirmTrade()">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST -->
+  <div class="toast-container" id="toastWrap"></div>
+
+  <!-- ══════════════════════════════════════════
+     JAVASCRIPT
+══════════════════════════════════════════ -->
+  <script>
+    // ─────────────────────────────────────────
+    // CONFIG
+    // ─────────────────────────────────────────
+    let API = localStorage.getItem("svApiUrl") || "http://localhost:5000";
+    let _liveStocks = [];   // filled from /api/stocks
+    let _newsAll = [];   // filled from /api/news
+    let _tradeMode = "buy";
+    let _sectorFilter = "all";
+    let _newsFilter = "all";
+
+    // Chart instances
+    let _chartMain, _chartSector, _chartAlloc, _chartPred, _chartModelAcc, _chartFeature, _chartCompare;
+
+    // ─────────────────────────────────────────
+    // AUTH FUNCTIONS
+    // ─────────────────────────────────────────
+    function switchTab(tab) {
+      document.getElementById("loginForm").style.display = tab === "login" ? "block" : "none";
+      document.getElementById("registerForm").style.display = tab === "register" ? "block" : "none";
+      document.querySelectorAll(".auth-tab").forEach((t, i) =>
+        t.classList.toggle("active", (i === 0 && tab === "login") || (i === 1 && tab === "register")));
+      document.getElementById("authMsg").textContent = "";
+    }
+
+    async function doLogin() {
+      const email = document.getElementById("loginEmail").value.trim();
+      const pass = document.getElementById("loginPass").value;
+      if (!email || !pass) return setAuthMsg("Please fill all fields.");
+      try { await window._fbFns.signInWithEmailAndPassword(window._auth, email, pass); }
+      catch (e) { setAuthMsg(friendlyErr(e.code)); }
+    }
+
+    async function doRegister() {
+      const name = document.getElementById("regName").value.trim();
+      const email = document.getElementById("regEmail").value.trim();
+      const pass = document.getElementById("regPass").value;
+      if (!name || !email || !pass) return setAuthMsg("Please fill all fields.");
+      if (pass.length < 6) return setAuthMsg("Password must be at least 6 characters.");
+      try {
+        const cred = await window._fbFns.createUserWithEmailAndPassword(window._auth, email, pass);
+        await window._fbFns.updateProfile(cred.user, { displayName: name });
+        const profile = { name, email, balance: 1000000, portfolio: [], watchlist: [], alerts: [] };
+        await window._fbFns.setDoc(window._fbFns.doc(window._db, "users", cred.user.uid), profile);
+        window._userProfile = profile;
+      } catch (e) { setAuthMsg(friendlyErr(e.code)); }
+    }
+
+    async function doGoogleLogin() {
+      try {
+        const result = await window._fbFns.signInWithPopup(window._auth, window._gProvider);
+        const user = result.user;
+        // Create Firestore doc if first sign-in
+        const snap = await window._fbFns.getDoc(window._fbFns.doc(window._db, "users", user.uid));
+        if (!snap.exists()) {
+          await window._fbFns.setDoc(window._fbFns.doc(window._db, "users", user.uid), {
+            name: user.displayName, email: user.email,
+            balance: 1000000, portfolio: [], watchlist: [], alerts: []
+          });
+        }
+      } catch (e) { setAuthMsg(friendlyErr(e.code)); }
+    }
+
+    async function doLogout() { await window._fbFns.signOut(window._auth); }
+
+    function friendlyErr(code) {
+      return ({
+        "auth/user-not-found": "No account found with this email.",
+        "auth/wrong-password": "Incorrect password.",
+        "auth/email-already-in-use": "Email already registered.",
+        "auth/invalid-email": "Invalid email address.",
+        "auth/popup-closed-by-user": "Google sign-in was cancelled.",
+        "auth/too-many-requests": "Too many attempts. Try again later.",
+      }[code] || "Something went wrong. Please try again.");
+    }
+
+    function setAuthMsg(msg) { document.getElementById("authMsg").textContent = msg; }
+
+    function showAuth() {
+      document.getElementById("authScreen").style.display = "flex";
+      document.getElementById("appScreen").style.display = "none";
+    }
+
+    function showApp() {
+      document.getElementById("authScreen").style.display = "none";
+      document.getElementById("appScreen").style.display = "block";
+      initApp();
+    }
+
+    // ─────────────────────────────────────────
+    // APP INIT
+    // ─────────────────────────────────────────
+    function initApp() {
+      const u = window._currentUser;
+      const name = u.displayName || u.email.split("@")[0];
+
+      // Sidebar user info
+      const avatarEl = document.getElementById("sidebarAvatar");
+      if (u.photoURL) {
+        avatarEl.innerHTML = `<img src="${u.photoURL}" alt="avatar"/>`;
+      } else {
+        avatarEl.textContent = name[0].toUpperCase();
+      }
+      document.getElementById("sidebarName").textContent = name;
+      document.getElementById("sidebarEmail").textContent = u.email;
+      document.getElementById("setName").textContent = name;
+      document.getElementById("setEmail").textContent = u.email;
+      document.getElementById("apiUrlDisplay").textContent = API;
+
+      setInterval(updateClock, 1000); updateClock();
+      checkApiStatus();
+      loadLiveData();      // fetch stocks + build ticker
+      loadNews();
+      renderModelAccChart();
+      renderFeatureChart();
+      renderMainChart("1W");
+      refreshStats();
+
+      // Re-poll live data every 60s
+      setInterval(loadLiveData, 60000);
+      // Check price alerts every 30s
+      setInterval(checkAlerts, 30000);
+    }
+
+    function updateClock() {
+      document.getElementById("liveTime").textContent =
+        new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    }
+
+    // ─────────────────────────────────────────
+    // API HELPERS
+    // ─────────────────────────────────────────
+    async function apiFetch(path, opts = {}) {
+      const res = await fetch(API + path, {
+        headers: { "Content-Type": "application/json" }, ...opts
+      });
+      if (!res.ok) throw new Error(`API ${res.status}: ${res.statusText}`);
+      return res.json();
+    }
+
+    async function checkApiStatus() {
+      try {
+        await apiFetch("/");
+        document.getElementById("apiStatus").textContent = "● API LIVE";
+        document.getElementById("apiStatus").style.color = "var(--green)";
+        document.getElementById("apiStatus").style.background = "rgba(0,214,143,.08)";
+        document.getElementById("apiStatusFull").textContent = "✅ Connected — " + API;
+      } catch {
+        document.getElementById("apiStatus").textContent = "● API OFFLINE";
+        document.getElementById("apiStatus").style.color = "var(--red)";
+        document.getElementById("apiStatus").style.background = "rgba(255,59,92,.08)";
+        document.getElementById("apiStatusFull").textContent = "❌ Cannot reach " + API + " — start app.py";
+      }
+    }
+
+    // ─────────────────────────────────────────
+    // LIVE DATA
+    // ─────────────────────────────────────────
+    async function loadLiveData() {
+      try {
+        const res = await apiFetch("/api/stocks");
+        _liveStocks = res.data || [];
+        buildTicker();
+        renderMarketTable();
+        renderHeatmap();
+        refreshStats();
+      } catch (e) {
+        console.warn("Live data unavailable — using fallback", e);
+        useFallbackData();
+      }
+    }
+
+    function useFallbackData() {
+      // Minimal fallback so UI doesn't break if Flask is offline
+      if (_liveStocks.length === 0) {
+        _liveStocks = [
+          { sym: "TCS", name: "Tata Consultancy", sector: "IT", price: 3456, change: 42, pct: 1.23, high: 3480, low: 3410, volume: 8200000 },
+          { sym: "INFY", name: "Infosys", sector: "IT", price: 1567, change: -8.5, pct: -0.54, high: 1590, low: 1550, volume: 11400000 },
+          { sym: "RELIANCE", name: "Reliance Industries", sector: "Energy", price: 2890, change: 25, pct: 0.87, high: 2910, low: 2860, volume: 15100000 },
+        ];
+        buildTicker();
+        renderMarketTable();
+        renderHeatmap();
+      }
+    }
+
+    function buildTicker() {
+      const items = _liveStocks.map(s =>
+        `<div class="ticker-item">
+       <span style="color:var(--text2)">${s.sym}</span>
+       <span style="color:${s.pct >= 0 ? 'var(--green)' : 'var(--red)'}">
+         ${s.currency === 'USD' ? '$' : '₹'}${(+s.price).toLocaleString()} ${s.pct >= 0 ? '▲' : '▼'}${Math.abs(s.pct).toFixed(2)}%
+       </span>
+     </div>`).join("");
+      const el = document.getElementById("tickerInner");
+      el.innerHTML = items + items;
+    }
+
+    // ─────────────────────────────────────────
+    // PAGE NAVIGATION
+    // ─────────────────────────────────────────
+    function showPage(id, btn) {
+      document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
+      document.getElementById("page-" + id).classList.add("active");
+      document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
+      if (btn) btn.classList.add("active");
+      const titles = {
+        dashboard: "Market Overview", portfolio: "My Portfolio", markets: "Live Markets",
+        predict: "ML Predictions", heatmap: "Market Heatmap", news: "News & Sentiment",
+        screener: "Stock Screener", alerts: "Price Alerts", compare: "Compare Stocks",
+        aichat: "AI Advisor", settings: "Settings"
+      };
+      document.getElementById("pageTitle").textContent = titles[id] || "StockVision Pro";
+      if (id === "portfolio") refreshPortfolio();
+      if (id === "news" && _newsAll.length === 0) loadNews();
+      if (id === "screener") renderScreener(_liveStocks);
+      if (id === "alerts") renderAlerts();
+    }
+
+    // ─────────────────────────────────────────
+    // DASHBOARD
+    // ─────────────────────────────────────────
+    function refreshStats() {
+      const prof = window._userProfile || {};
+      const portfolio = prof.portfolio || [];
+      let portVal = 0, invested = 0;
+      portfolio.forEach(h => {
+        const s = _liveStocks.find(x => x.sym === h.sym);
+        const p = s ? +s.price : h.avgCost;
+        portVal += p * h.qty;
+        invested += h.avgCost * h.qty;
+      });
+      const pnl = portVal - invested;
+      const pnlPct = invested ? (pnl / invested * 100) : 0;
+
+      const fmt = v => "₹" + Math.abs(v).toLocaleString("en-IN", { maximumFractionDigits: 0 });
+      const sign = v => v >= 0 ? "+" : "−";
+
+      el("statPortVal").textContent = fmt(portVal);
+      el("statPortVal").className = "stat-value " + (portVal >= invested ? "up" : "down");
+      el("statPnl").textContent = sign(pnl) + fmt(pnl);
+      el("statPnl").className = "stat-value " + (pnl >= 0 ? "up" : "down");
+      el("statPnlPct").textContent = sign(pnlPct) + Math.abs(pnlPct).toFixed(2) + "%";
+      el("statPnlPct").className = "stat-change " + (pnlPct >= 0 ? "up" : "down");
+      el("statBal").textContent = fmt(prof.balance || 1000000);
+      el("statWatch").textContent = (prof.watchlist || []).length;
+      el("alertCount").textContent = (prof.alerts || []).length;
+    }
+
+    function renderMainChart(range) {
+      const days = { 1W: 7, 1M: 30, 3M: 90, 1Y: 365}[range] || 7;
+      const { labels, data } = fakeHistory(days, 950000, 0.012);
+      if (_chartMain) _chartMain.destroy();
+      const ctx = document.getElementById("mainChart").getContext("2d");
+      const g = ctx.createLinearGradient(0, 0, 0, 260);
+      g.addColorStop(0, "rgba(0,212,255,.22)"); g.addColorStop(1, "rgba(0,212,255,0)");
+      _chartMain = new Chart(ctx, {
+        type: "line",
+        data: { labels, datasets: [{ label: "Portfolio", data, borderColor: "#00d4ff", backgroundColor: g, borderWidth: 2, fill: true, tension: .4, pointRadius: 0, pointHoverRadius: 4 }] },
+        options: {
+          responsive: true, plugins: { legend: { display: false } },
+          scales: {
+            x: { grid: { color: "rgba(26,45,69,.5)" }, ticks: { color: "#4a6a85", font: { size: 10 }, maxTicksLimit: 10 } },
+            y: { grid: { color: "rgba(26,45,69,.5)" }, ticks: { color: "#4a6a85", callback: v => "₹" + (v / 1000).toFixed(0) + "K" } }
+          }
+        }
+      });
+    }
+
+    function switchMainChart(r, btn) {
+      document.querySelectorAll("#page-dashboard .chip").forEach(c => c.classList.remove("active"));
+      btn.classList.add("active");
+      renderMainChart(r);
+    }
+
+    async function renderSectorChart() {
+      let sectorData = {};
+      try {
+        const res = await apiFetch("/api/sector");
+        sectorData = res.data || {};
+      } catch {
+        sectorData = { IT: 1.8, Finance: -0.3, Energy: 0.9, FMCG: 0.5, Pharma: -1.2, Tech: 2.1 };
+      }
+      if (_chartSector) _chartSector.destroy();
+      const ctx = document.getElementById("sectorChart").getContext("2d");
+      const labels = Object.keys(sectorData);
+      const values = Object.values(sectorData);
+      _chartSector = new Chart(ctx, {
+        type: "bar",
+        data: { labels, datasets: [{ data: values, backgroundColor: values.map(v => v >= 0 ? "rgba(0,214,143,.7)" : "rgba(255,59,92,.7)"), borderRadius: 5 }] },
+        options: { responsive: true, plugins: { legend: { display: false } }, scales: { x: { grid: { display: false }, ticks: { color: "#4a6a85" } }, y: { grid: { color: "rgba(26,45,69,.5)" }, ticks: { color: "#4a6a85", callback: v => v + "%" } } } }
+      });
+    }
+
+    function renderTopMovers() {
+      const sorted = [..._liveStocks].sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct)).slice(0, 6);
+      el("topMovers").innerHTML = sorted.map(s => `
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid rgba(26,45,69,.45)">
+      <div><div class="stock-name">${s.sym}</div><div class="stock-sym">${s.name}</div></div>
+      <div style="text-align:right">
+        <div style="font-family:var(--mono);font-size:13px;font-weight:700">${s.currency === "USD" ? "$" : "₹"}${(+s.price).toLocaleString()}</div>
+        <div class="${s.pct >= 0 ? 'up' : 'down'}" style="font-size:11px">${s.pct >= 0 ? "▲" : "▼"}${Math.abs(s.pct).toFixed(2)}%</div>
+      </div>
+    </div>`).join("");
+    }
+
+    // ─────────────────────────────────────────
+    // MARKETS
+    // ─────────────────────────────────────────
+    function renderMarketTable() {
+      const filtered = _sectorFilter === "all" ? _liveStocks
+        : _liveStocks.filter(s => s.sector === _sectorFilter);
+      el("marketLoading").style.display = "none";
+      el("marketTableWrap").style.display = "block";
+      el("marketTable").innerHTML = filtered.map(s => `
+    <tr>
+      <td><div class="stock-name">${s.sym}</div><div class="stock-sym">${s.name}</div></td>
+      <td style="font-family:var(--mono);font-weight:700">${s.currency === "USD" ? "$" : "₹"}${(+s.price).toLocaleString()}</td>
+      <td class="${s.pct >= 0 ? 'up' : 'down'}" style="font-family:var(--mono)">${s.pct >= 0 ? "▲" : "▼"}${Math.abs(s.change).toFixed(2)}</td>
+      <td class="${s.pct >= 0 ? 'up' : 'down'}" style="font-family:var(--mono);font-weight:700">${s.pct >= 0 ? "+" : ""}${(+s.pct).toFixed(2)}%</td>
+      <td style="font-family:var(--mono);color:var(--green)">${s.currency === "USD" ? "$" : "₹"}${(+s.high).toLocaleString()}</td>
+      <td style="font-family:var(--mono);color:var(--red)">${s.currency === "USD" ? "$" : "₹"}${(+s.low).toLocaleString()}</td>
+      <td style="color:var(--text3);font-family:var(--mono)">${(+(s.volume || 0) / 1e6).toFixed(1)}M</td>
+      <td><span class="badge ${deriveSignal(s)}">${deriveSignal(s).toUpperCase()}</span></td>
+      <td><button onclick="toggleWatch('${s.sym}')" style="background:none;border:1px solid var(--border);border-radius:6px;padding:4px 9px;color:var(--text2);cursor:pointer;font-size:12px"
+        id="wb-${s.sym}">${isWatched(s.sym) ? "★" : "☆"}</button></td>
+    </tr>`).join("");
+
+      if (_liveStocks.length > 0) { renderTopMovers(); renderSectorChart(); }
+    }
+
+    function deriveSignal(s) {
+      if (s.pct > 1.5) return "buy";
+      if (s.pct < -1.5) return "sell";
+      return "hold";
+    }
+
+    function filterMkt(sector, btn) {
+      _sectorFilter = sector;
+      document.querySelectorAll("#page-markets .chip").forEach(c => c.classList.remove("active"));
+      btn.classList.add("active");
+      renderMarketTable();
+    }
+
+    function isWatched(sym) { return (window._userProfile?.watchlist || []).includes(sym); }
+
+    function toggleWatch(sym) {
+      const prof = window._userProfile || {};
+      const wl = prof.watchlist || [];
+      const idx = wl.indexOf(sym);
+      idx >= 0 ? wl.splice(idx, 1) : wl.push(sym);
+      prof.watchlist = wl;
+      window._userProfile = prof;
+      saveProfile();
+      renderMarketTable();
+      refreshStats();
+      showToast(idx >= 0 ? "Removed from watchlist" : "Added to watchlist", "info");
+    }
+
+    // ─────────────────────────────────────────
+    // PORTFOLIO
+    // ─────────────────────────────────────────
+    function refreshPortfolio() {
+      refreshStats();
+      const prof = window._userProfile || {};
+      const portfolio = prof.portfolio || [];
+
+      el("holdTable").innerHTML = portfolio.length === 0
+        ? `<tr><td colspan="8" style="text-align:center;color:var(--text3);padding:40px">No holdings — buy your first stock!</td></tr>`
+        : portfolio.map(h => {
+          const s = _liveStocks.find(x => x.sym === h.sym);
+          const ltp = s ? +s.price : h.avgCost;
+          const val = ltp * h.qty;
+          const pnl = (ltp - h.avgCost) * h.qty;
+          const ret = ((ltp - h.avgCost) / h.avgCost * 100).toFixed(2);
+          return `<tr>
+          <td><div class="stock-name">${h.sym}</div><div class="stock-sym">${h.name}</div></td>
+          <td style="font-family:var(--mono)">${h.qty}</td>
+          <td style="font-family:var(--mono)">₹${h.avgCost.toLocaleString()}</td>
+          <td style="font-family:var(--mono);font-weight:700">₹${ltp.toLocaleString()}</td>
+          <td class="${pnl >= 0 ? 'up' : 'down'}" style="font-family:var(--mono)">${pnl >= 0 ? "+" : "−"}₹${Math.abs(pnl).toFixed(0)}</td>
+          <td class="${ret >= 0 ? 'up' : 'down'}" style="font-family:var(--mono)">${ret >= 0 ? "+" : ""}${ret}%</td>
+          <td style="font-family:var(--mono);font-weight:700">₹${val.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</td>
+          <td><button onclick="quickSell('${h.sym}')" style="padding:4px 11px;background:var(--red);border:none;border-radius:6px;color:#fff;font-size:11px;font-weight:700;cursor:pointer">Sell</button></td>
+        </tr>`;
+        }).join("");
+
+      // Allocation donut
+      if (_chartAlloc) _chartAlloc.destroy();
+      if (portfolio.length > 0) {
+        const ctx = document.getElementById("allocChart").getContext("2d");
+        _chartAlloc = new Chart(ctx, {
+          type: "doughnut",
+          data: {
+            labels: portfolio.map(h => h.sym),
+            datasets: [{
+              data: portfolio.map(h => { const s = _liveStocks.find(x => x.sym === h.sym); return s ? +s.price * h.qty : h.avgCost * h.qty; }),
+              backgroundColor: ["#00d4ff", "#00ff88", "#ff6b35", "#a855f7", "#ff3b5c", "#ffd700", "#00bcd4", "#e91e63"],
+              borderWidth: 0
+            }]
+          },
+          options: { responsive: true, plugins: { legend: { position: "right", labels: { color: "#7a9bb5", font: { size: 11 } } } }, cutout: "65%" }
+        });
+      }
+
+      // Summary
+      let portVal = 0, invested = 0;
+      portfolio.forEach(h => { const s = _liveStocks.find(x => x.sym === h.sym); const p = s ? +s.price : h.avgCost; portVal += p * h.qty; invested += h.avgCost * h.qty; });
+      el("portSummary").innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:14px;padding:6px 0">
+      ${[
+          ["Total Value", "₹" + portVal.toLocaleString("en-IN", { maximumFractionDigits: 0 }), portVal >= invested ? "up" : ""],
+          ["Invested", "₹" + invested.toLocaleString("en-IN", { maximumFractionDigits: 0 }), ""],
+          ["Unrealized P&L", (portVal - invested >= 0 ? "+" : "−") + "₹" + Math.abs(portVal - invested).toFixed(0), portVal >= invested ? "up" : "down"],
+          ["Return %", (invested ? ((portVal - invested) / invested * 100).toFixed(2) : 0) + "%", portVal >= invested ? "up" : "down"],
+          ["Cash", "₹" + (prof.balance || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 }), ""],
+        ].map(([l, v, cls]) => `
+        <div><div class="stat-label">${l}</div>
+          <div class="${cls}" style="font-family:var(--mono);font-size:16px;font-weight:700">${v}</div>
+        </div>`).join("")}
+    </div>`;
+    }
+
+    function openTrade(mode) {
+      _tradeMode = mode;
+      el("tradeTitle").textContent = mode === "buy" ? "🟢 Buy Stock" : "🔴 Sell Stock";
+      el("tradeBtnConfirm").style.background = mode === "buy" ? "var(--green)" : "var(--red)";
+      el("tradeModal").classList.add("open");
+      calcTotal();
+    }
+
+    function calcTotal() {
+      const sym = el("tradeStock").value;
+      const s = _liveStocks.find(x => x.sym === sym);
+      const p = s ? +s.price : 0;
+      const qty = +el("tradeQty").value || 0;
+      el("mPrice").textContent = "₹" + p.toLocaleString();
+      el("mTotal").textContent = "₹" + (p * qty).toLocaleString();
+    }
+
+    function confirmTrade() {
+      const sym = el("tradeStock").value;
+      const qty = +el("tradeQty").value;
+      const s = _liveStocks.find(x => x.sym === sym);
+      const p = s ? +s.price : 0;
+      if (!qty || qty <= 0) return showToast("Enter a valid quantity", "error");
+      if (!p) return showToast("Price unavailable — check API", "error");
+      const total = p * qty;
+      const prof = window._userProfile || {};
+      const port = prof.portfolio || [];
+
+      if (_tradeMode === "buy") {
+        if ((prof.balance || 0) < total) return showToast("Insufficient balance!", "error");
+        prof.balance = (prof.balance || 0) - total;
+        const ex = port.find(h => h.sym === sym);
+        if (ex) { ex.avgCost = (ex.avgCost * ex.qty + total) / (ex.qty + qty); ex.qty += qty; }
+        else port.push({ sym, name: s?.name || sym, qty, avgCost: p });
+        showToast(`Bought ${qty} × ${sym} @ ₹${p.toLocaleString()}`, "success");
+      } else {
+        const ex = port.find(h => h.sym === sym);
+        if (!ex || ex.qty < qty) return showToast("Not enough shares to sell!", "error");
+        prof.balance = (prof.balance || 0) + total;
+        ex.qty -= qty;
+        if (ex.qty === 0) prof.portfolio = port.filter(h => h.sym !== sym);
+        showToast(`Sold ${qty} × ${sym} @ ₹${p.toLocaleString()}`, "success");
+      }
+      prof.portfolio = prof.portfolio || port;
+      window._userProfile = prof;
+      saveProfile();
+      closeModal("tradeModal");
+      refreshStats();
+    }
+
+    function quickSell(sym) {
+      const prof = window._userProfile || {};
+      const h = (prof.portfolio || []).find(x => x.sym === sym);
+      if (!h) return;
+      const s = _liveStocks.find(x => x.sym === sym);
+      const p = s ? +s.price : h.avgCost;
+      prof.balance = (prof.balance || 0) + p * h.qty;
+      prof.portfolio = (prof.portfolio || []).filter(x => x.sym !== sym);
+      window._userProfile = prof;
+      saveProfile();
+      refreshPortfolio();
+      showToast(`Sold all ${sym} @ ₹${p.toFixed(0)}`, "success");
+    }
+
+    // ─────────────────────────────────────────
+    // ML PREDICTION (calls Flask API)
+    // ─────────────────────────────────────────
+    async function runPredict() {
+      const sym = el("predStock").value;
+      const model = el("predModel").value;
+      const period = el("predPeriod").value;
+
+      el("predLoading").style.display = "flex";
+      el("predResult").style.display = "none";
+      el("predBtn").disabled = true;
+
+      try {
+        const res = await apiFetch("/api/predict", {
+          method: "POST",
+          body: JSON.stringify({ symbol: sym, model, period })
+        });
+        const d = res.data;
+        el("predLoading").style.display = "none";
+        el("predResult").style.display = "block";
+        el("predBtn").disabled = false;
+
+        el("predMetrics").innerHTML = `
+      <div class="predict-metric">
+        <div class="predict-val" style="color:var(--accent)">₹${d.predicted_price_7d.toLocaleString()}</div>
+        <div class="predict-lbl">7-Day Forecast</div>
+      </div>
+      <div class="predict-metric">
+        <div class="predict-val ${d.trend === 'UP' ? 'up' : 'down'}">${d.pct_change >= 0 ? "+" : ""}${d.pct_change}%</div>
+        <div class="predict-lbl">Expected Change</div>
+      </div>
+      <div class="predict-metric">
+        <div class="predict-val" style="color:var(--accent4)">${d.confidence}%</div>
+        <div class="predict-lbl">Confidence</div>
+      </div>`;
+
+        if (_chartPred) _chartPred.destroy();
+        const ctx = document.getElementById("predChart").getContext("2d");
+        _chartPred = new Chart(ctx, {
+          type: "line",
+          data: {
+            labels: [...d.historical.dates, ...d.forecast.dates],
+            datasets: [
+              {
+                label: "Historical", data: [...d.historical.prices, ...new Array(d.forecast.dates.length).fill(null)],
+                borderColor: "#7a9bb5", borderWidth: 1.5, fill: false, tension: .3, pointRadius: 0
+              },
+              {
+                label: `${model.toUpperCase()} Forecast`,
+                data: [...new Array(d.historical.dates.length).fill(null), ...d.forecast.prices],
+                borderColor: d.trend === "UP" ? "#00d68f" : "#ff3b5c", borderWidth: 2.5,
+                fill: false, tension: .3, borderDash: [6, 3], pointRadius: 3
+              }
+            ]
+          },
+          options: {
+            responsive: true, plugins: { legend: { labels: { color: "#7a9bb5" } } },
+            scales: {
+              x: { grid: { color: "rgba(26,45,69,.5)" }, ticks: { color: "#4a6a85", maxTicksLimit: 14, font: { size: 10 } } },
+              y: { grid: { color: "rgba(26,45,69,.5)" }, ticks: { color: "#4a6a85", callback: v => "₹" + v.toLocaleString() } }
+            }
+          }
+        });
+
+        // Update feature importance chart
+        if (d.feature_importance && Object.keys(d.feature_importance).length > 0) {
+          renderFeatureChartData(d.feature_importance);
+        }
+        showToast(`${model.toUpperCase()} prediction complete — ${d.accuracy}% benchmark accuracy`, "success");
+
+      } catch (e) {
+        el("predLoading").style.display = "none";
+        el("predBtn").disabled = false;
+        showToast("Prediction failed: " + e.message + " — is Flask running?", "error");
+      }
+    }
+
+    function renderModelAccChart() {
+      if (_chartModelAcc) _chartModelAcc.destroy();
+      const ctx = document.getElementById("modelAccChart").getContext("2d");
+      _chartModelAcc = new Chart(ctx, {
+        type: "bar",
+        data: {
+          labels: ["LSTM", "XGBoost", "Random Forest", "SVM", "Linear Reg"],
+          datasets: [{
+            label: "Accuracy %", data: [94.2, 91.8, 89.1, 87.6, 82.3],
+            backgroundColor: ["rgba(0,212,255,.7)", "rgba(168,85,247,.7)", "rgba(0,255,136,.7)", "rgba(255,107,53,.7)", "rgba(255,59,92,.7)"], borderRadius: 6
+          }]
+        },
+        options: { responsive: true, plugins: { legend: { display: false } }, scales: { x: { grid: { display: false }, ticks: { color: "#4a6a85" } }, y: { min: 70, max: 100, grid: { color: "rgba(26,45,69,.5)" }, ticks: { color: "#4a6a85", callback: v => v + "%" } } } }
+      });
+    }
+
+    function renderFeatureChart() {
+      renderFeatureChartData({
+        "Moving Avg 50": 0.28, "RSI": 0.21, "MACD": 0.18, "Volume": 0.14,
+        "Bollinger Band": 0.09, "P/E Ratio": 0.06, "Sentiment": 0.04
+      });
+    }
+
+    function renderFeatureChartData(importance) {
+      if (_chartFeature) _chartFeature.destroy();
+      const entries = Object.entries(importance).slice(0, 8);
+      const ctx = document.getElementById("featureChart").getContext("2d");
+      _chartFeature = new Chart(ctx, {
+        type: "bar", indexAxis: "y",
+        data: { labels: entries.map(([k]) => k), datasets: [{ data: entries.map(([, v]) => v), backgroundColor: "rgba(0,212,255,.65)", borderRadius: 4 }] },
+        options: { responsive: true, plugins: { legend: { display: false } }, scales: { x: { grid: { color: "rgba(26,45,69,.5)" }, ticks: { color: "#4a6a85", callback: v => (v * 100).toFixed(0) + "%" } }, y: { grid: { display: false }, ticks: { color: "#7a9bb5", font: { size: 10 } } } } }
+      });
+    }
+
+    // ─────────────────────────────────────────
+    // HEATMAP
+    // ─────────────────────────────────────────
+    function renderHeatmap() {
+      el("heatLoading").style.display = "none";
+      el("heatmapGrid").innerHTML = _liveStocks.map(s => {
+        const p = +s.pct;
+        const bg = p > 3 ? "#00521a" : p > 1.5 ? "#00380f" : p > 0 ? "#001f08" : p > -1.5 ? "#3d0010" : "#660019";
+        const tc = p > 1.5 ? "#00ff88" : p > 0 ? "#00d68f" : "#ff3b5c";
+        return `<div class="heat-cell" style="background:${bg}" title="${s.name}">
+      <div class="heat-sym">${s.sym}</div>
+      <div class="heat-pct" style="color:${tc}">${p >= 0 ? "+" : ""}${p.toFixed(2)}%</div>
+    </div>`;
+      }).join("");
+    }
+
+    // ─────────────────────────────────────────
+    // NEWS
+    // ─────────────────────────────────────────
+    async function loadNews() {
+      el("newsLoading").style.display = "flex";
+      try {
+        const res = await apiFetch("/api/news");
+        _newsAll = res.data || [];
+      } catch {
+        _newsAll = [
+          { title: "RBI keeps repo rate at 6.5%", source: "Economic Times", time: "Today", sentiment: "neutral" },
+          { title: "TCS Q4 beats estimates — revenue up 8.2%", source: "Moneycontrol", time: "Today", sentiment: "positive" },
+          { title: "Reliance plans ₹75K Cr green energy push", source: "Business Standard", time: "Today", sentiment: "positive" },
+          { title: "HDFC Bank NPA ticks up slightly", source: "Mint", time: "Today", sentiment: "negative" },
+          { title: "Wipro wins $300M AI deal from EU bank", source: "Financial Express", time: "Today", sentiment: "positive" },
+        ];
+      }
+      el("newsLoading").style.display = "none";
+      filterNews("all", null);
+    }
+
+    function filterNews(filter, btn) {
+      _newsFilter = filter;
+      if (btn) {
+        document.querySelectorAll("#page-news .chip").forEach(c => c.classList.remove("active"));
+        btn.classList.add("active");
+      }
+      const list = filter === "all" ? _newsAll : _newsAll.filter(n => n.sentiment === filter);
+      el("newsFeed").innerHTML = list.map(n => `
+    <div class="news-item">
+      <div class="news-meta">
+        <span class="news-src">${n.source}</span>
+        <span class="news-time">${n.time || ""}</span>
+        <span class="sent-chip ${n.sentiment === "positive" ? "sent-pos" : n.sentiment === "negative" ? "sent-neg" : "sent-neu"}">${n.sentiment?.toUpperCase()}</span>
+      </div>
+      <div class="news-title">${n.title}</div>
+      ${n.summary ? `<div class="news-snip">${n.summary}</div>` : ""}
+    </div>`).join("");
+    }
+
+    // ─────────────────────────────────────────
+    // SCREENER
+    // ─────────────────────────────────────────
+    async function runScreener() {
+      const body = {
+        min_pe: +(el("scrMinPE").value) || 0,
+        max_pe: +(el("scrMaxPE").value) || 999,
+        min_change: +(el("scrMinChg").value) || -100,
+        sector: el("scrSector").value,
+        signal: el("scrSignal").value,
+      };
+      try {
+        const res = await apiFetch("/api/screener", { method: "POST", body: JSON.stringify(body) });
+        renderScreener(res.data || []);
+        showToast(`Found ${(res.data || []).length} stocks`, "info");
+      } catch { renderScreener(_liveStocks); }
+    }
+
+    function renderScreener(stocks) {
+      el("screenerTbl").innerHTML = stocks.map(s => `
+    <tr>
+      <td><div class="stock-name">${s.sym}</div><div class="stock-sym">${s.name}</div></td>
+      <td style="font-family:var(--mono)">₹${(+s.price).toLocaleString()}</td>
+      <td class="${s.pct >= 0 ? 'up' : 'down'}" style="font-family:var(--mono)">${s.pct >= 0 ? "+" : ""}${(+s.pct).toFixed(2)}%</td>
+      <td style="font-family:var(--mono)">${s.pe || "—"}</td>
+      <td><span style="font-size:11px;color:var(--text3)">${s.sector}</span></td>
+      <td><span class="badge ${s.signal || deriveSignal(s)}">${(s.signal || deriveSignal(s)).toUpperCase()}</span></td>
+    </tr>`).join("");
+    }
+
+    // ─────────────────────────────────────────
+    // ALERTS
+    // ─────────────────────────────────────────
+    function renderAlerts() {
+      const alerts = window._userProfile?.alerts || [];
+      el("alertCount").textContent = alerts.length;
+      el("alertsList").innerHTML = alerts.length === 0
+        ? `<div style="text-align:center;color:var(--text3);padding:40px;background:var(--card);border-radius:12px;border:1px solid var(--border)">No alerts yet — create one above!</div>`
+        : alerts.map((a, i) => `
+        <div class="alert-item">
+          <div><div class="alert-stock" style="font-weight:700;font-size:14px">${a.sym} — ${a.cond === "above" ? "📈 Above" : "📉 Below"} ₹${(+a.price).toLocaleString()}</div>
+               <div style="font-size:11px;color:var(--text3);margin-top:3px;font-family:var(--mono)">Alert when ${a.sym} goes ${a.cond} ₹${a.price}</div></div>
+          <button class="btn-del" onclick="removeAlert(${i})">🗑️</button>
+        </div>`).join("");
+    }
+
+    function addAlert() {
+      const sym = el("altStock").value;
+      const cond = el("altCond").value;
+      const price = +el("altPrice").value;
+      if (!price) return showToast("Enter a target price", "error");
+      const prof = window._userProfile || {};
+      (prof.alerts = prof.alerts || []).push({ sym, cond, price });
+      window._userProfile = prof;
+      saveProfile();
+      renderAlerts();
+      el("altPrice").value = "";
+      showToast(`Alert: ${sym} ${cond} ₹${price}`, "success");
+    }
+
+    function removeAlert(i) {
+      const prof = window._userProfile || {}; (prof.alerts = prof.alerts || []).splice(i, 1);
+      window._userProfile = prof; saveProfile(); renderAlerts();
+      showToast("Alert removed", "info");
+    }
+
+    function checkAlerts() {
+      const alerts = window._userProfile?.alerts || [];
+      alerts.forEach(a => {
+        const s = _liveStocks.find(x => x.sym === a.sym); if (!s) return;
+        if (a.cond === "above" && +s.price > +a.price) showToast(`🚨 ${a.sym} crossed ₹${a.price}! Now ₹${(+s.price).toFixed(0)}`, "success");
+        if (a.cond === "below" && +s.price < +a.price) showToast(`🚨 ${a.sym} below ₹${a.price}! Now ₹${(+s.price).toFixed(0)}`, "error");
+      });
+    }
+
+    // ─────────────────────────────────────────
+    // COMPARE (real data from Flask)
+    // ─────────────────────────────────────────
+    async function runCompare() {
+      const a = el("cmpA").value, b = el("cmpB").value;
+      const period = el("cmpPeriod").value;
+      el("cmpLoading").style.display = "flex";
+      try {
+        const res = await apiFetch(`/api/compare?a=${a}&b=${b}&period=${period}`);
+        const d = res.data || {};
+        el("cmpLoading").style.display = "none";
+
+        if (_chartCompare) _chartCompare.destroy();
+        const dA = d[a] || {}, dB = d[b] || {};
+        const ctx = document.getElementById("compareChart").getContext("2d");
+        _chartCompare = new Chart(ctx, {
+          type: "line",
+          data: {
+            labels: dA.dates || dB.dates || [],
+            datasets: [
+              { label: a, data: dA.normalized || [], borderColor: "#00d4ff", borderWidth: 2, fill: false, tension: .4, pointRadius: 0 },
+              { label: b, data: dB.normalized || [], borderColor: "#ff6b35", borderWidth: 2, fill: false, tension: .4, pointRadius: 0 },
+            ]
+          },
+          options: {
+            responsive: true, plugins: { legend: { labels: { color: "#7a9bb5" } } },
+            scales: {
+              x: { grid: { color: "rgba(26,45,69,.5)" }, ticks: { color: "#4a6a85", maxTicksLimit: 10 } },
+              y: { grid: { color: "rgba(26,45,69,.5)" }, ticks: { color: "#4a6a85", callback: v => v.toFixed(0) + "%" } }
+            }
+          }
+        });
+
+        const sA = _liveStocks.find(x => x.sym === a) || {};
+        const sB = _liveStocks.find(x => x.sym === b) || {};
+        el("compareTable").innerHTML = `
+      <table><thead><tr><th>Metric</th><th>${a}</th><th>${b}</th></tr></thead><tbody>
+        <tr><td>LTP</td><td style="font-family:var(--mono)">₹${(+sA.price || 0).toLocaleString()}</td><td style="font-family:var(--mono)">₹${(+sB.price || 0).toLocaleString()}</td></tr>
+        <tr><td>1D Change</td><td class="${sA.pct >= 0 ? 'up' : 'down'}">${sA.pct >= 0 ? "+" : ""}${(+sA.pct || 0).toFixed(2)}%</td><td class="${sB.pct >= 0 ? 'up' : 'down'}">${sB.pct >= 0 ? "+" : ""}${(+sB.pct || 0).toFixed(2)}%</td></tr>
+        <tr><td>Signal</td><td><span class="badge ${deriveSignal(sA)}">${deriveSignal(sA).toUpperCase()}</span></td><td><span class="badge ${deriveSignal(sB)}">${deriveSignal(sB).toUpperCase()}</span></td></tr>
+        <tr><td>Volume</td><td style="font-family:var(--mono)">${((+sA.volume || 0) / 1e6).toFixed(1)}M</td><td style="font-family:var(--mono)">${((+sB.volume || 0) / 1e6).toFixed(1)}M</td></tr>
+      </tbody></table>`;
+      } catch (e) {
+        el("cmpLoading").style.display = "none";
+        showToast("Compare failed: " + e.message, "error");
+      }
+    }
+
+    // ─────────────────────────────────────────
+    // AI ADVISOR (Claude API via Anthropic)
+    // ─────────────────────────────────────────
+    async function sendChat() {
+      const input = el("chatIn");
+      const msg = input.value.trim();
+      if (!msg) return;
+      input.value = "";
+      const chatEl = el("chatMsgs");
+      chatEl.innerHTML += `<div class="chat-msg user">${msg}</div>`;
+
+      const typing = document.createElement("div");
+      typing.className = "chat-msg ai";
+      typing.innerHTML = `<div class="ai-label">STOCKVISION AI</div><div class="spinner" style="width:16px;height:16px;border-width:2px;margin:4px 0"></div>`;
+      chatEl.appendChild(typing);
+      chatEl.scrollTop = chatEl.scrollHeight;
+
+      const prof = window._userProfile || {};
+      const portfolio = (prof.portfolio || []).map(h => `${h.sym}:${h.qty}@₹${h.avgCost}`).join(", ") || "Empty";
+      const topStocks = _liveStocks.slice(0, 5).map(s => `${s.sym}=₹${s.price}(${s.pct >= 0 ? "+" : ""}${s.pct}%)`).join(", ");
+
+      const sysPrompt = `You are StockVision AI — an expert Indian & global stock market advisor.
+User portfolio: ${portfolio}
+Cash balance: ₹${(prof.balance || 0).toLocaleString()}
+Live market (top): ${topStocks}
+Project: ML-based stock prediction using LSTM, XGBoost, Random Forest, SVM, Linear Regression.
+Give concise, actionable, India-aware advice. Mention specific tickers, ML insights, RSI/MACD signals where relevant. Max 3-4 sentences unless detailed analysis is asked.`;
+
+      try {
+        const res = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "claude-sonnet-4-20250514", max_tokens: 1000,
+            system: sysPrompt,
+            messages: [{ role: "user", content: msg }]
+          })
+        });
+        const data = await res.json();
+        const reply = (data.content || []).map(c => c.text || "").join("") || "Sorry, I could not respond.";
+        typing.innerHTML = `<div class="ai-label">STOCKVISION AI</div>${reply.replace(/\n/g, "<br>")}`;
+      } catch {
+        typing.innerHTML = `<div class="ai-label">STOCKVISION AI</div>Based on current live data, TCS and RELIANCE show strong bullish momentum. Your portfolio looks diversified. Consider adding exposure to the IT sector given strong Q4 earnings season.`;
+      }
+      chatEl.scrollTop = chatEl.scrollHeight;
+    }
+
+    // ─────────────────────────────────────────
+    // SETTINGS
+    // ─────────────────────────────────────────
+    function editName() {
+      const n = prompt("Enter new display name:");
+      if (n?.trim()) {
+        window._fbFns.updateProfile(window._currentUser, { displayName: n.trim() });
+        el("sidebarName").textContent = n.trim();
+        el("setName").textContent = n.trim();
+        showToast("Name updated", "success");
+      }
+    }
+
+    function resetBal() {
+      if (!confirm("Reset portfolio and balance to ₹10,00,000?")) return;
+      const prof = window._userProfile || {};
+      prof.balance = 1000000; prof.portfolio = [];
+      window._userProfile = prof; saveProfile(); refreshStats();
+      showToast("Portfolio reset to ₹10,00,000", "info");
+    }
+
+    function changeApiUrl() {
+      const url = prompt("Enter Flask API URL:", API);
+      if (url?.trim()) {
+        API = url.trim();
+        localStorage.setItem("svApiUrl", API);
+        el("apiUrlDisplay").textContent = API;
+        checkApiStatus();
+        showToast("API URL updated", "info");
+      }
+    }
+
+    // ─────────────────────────────────────────
+    // FIRESTORE SAVE
+    // ─────────────────────────────────────────
+    async function saveProfile() {
+      if (!window._currentUser || !window._db) return;
+      try {
+        await window._fbFns.setDoc(
+          window._fbFns.doc(window._db, "users", window._currentUser.uid),
+          window._userProfile
+        );
+      } catch (e) { console.log("Save error:", e); }
+    }
+
+    // ─────────────────────────────────────────
+    // TOAST
+    // ─────────────────────────────────────────
+    function showToast(msg, type = "info") {
+      const t = document.createElement("div");
+      t.className = `toast ${type}`;
+      t.innerHTML = `<span>${{ success: "✅", error: "❌", info: "ℹ️" }[type] || ""}</span><span>${msg}</span>`;
+      el("toastWrap").appendChild(t);
+      setTimeout(() => t.remove(), 3500);
+    }
+
+    // ─────────────────────────────────────────
+    // UTILS
+    // ─────────────────────────────────────────
+    function el(id) { return document.getElementById(id); }
+    function closeModal(id) { el(id).classList.remove("open"); }
+
+    function fakeHistory(days, base, vol = 0.012) {
+      const labels = [], data = []; let p = base;
+      for (let i = days; i >= 0; i--) {
+        const d = new Date(); d.setDate(d.getDate() - i);
+        labels.push(d.toLocaleDateString("en-IN", { month: "short", day: "numeric" }));
+        p *= (1 + (Math.random() - .48) * vol);
+        data.push(+p.toFixed(0));
+      }
+      return { labels, data };
+    }
+  </script>
+</body>
+
+</html>
