@@ -1,4 +1,4 @@
-# StockVision Pro — Python Dependencies
+# StockVision Pro — Python Dependencies (Vercel-optimized)
 # Install with: pip install -r requirements.txt
 
 flask==3.0.0
@@ -9,15 +9,10 @@ yfinance==0.2.36
 pandas==2.1.4
 numpy==1.26.3
 
-# ML
+# ML (sklearn only — keeps bundle under 500 MB)
 scikit-learn==1.4.0
-xgboost==2.0.3
-
-# Deep Learning
-# tensorflow removed — not compatible with Vercel's Python 3.12
-# model.py gracefully falls back to sklearn when TF is absent
+# xgboost removed for Vercel size limit — model.py falls back to sklearn
 
 # Utilities
 requests==2.31.0
 python-dotenv==1.0.0
-gunicorn==21.2.0
