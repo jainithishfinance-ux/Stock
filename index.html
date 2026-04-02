@@ -1995,7 +1995,8 @@
     // ─────────────────────────────────────────
     // CONFIG
     // ─────────────────────────────────────────
-    let API = localStorage.getItem("svApiUrl") || "http://localhost:5000";
+    // Auto-detect API URL: use same origin on Vercel, localhost for local dev
+    let API = localStorage.getItem("svApiUrl") || (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:5000' : window.location.origin);
     let _liveStocks = [];   // filled from /api/stocks
     let _newsAll = [];   // filled from /api/news
     let _tradeMode = "buy";
@@ -2041,17 +2042,24 @@
 
     async function doGoogleLogin() {
       try {
+        setAuthMsg(""); // Clear previous errors
         const result = await window._fbFns.signInWithPopup(window._auth, window._gProvider);
         const user = result.user;
         // Create Firestore doc if first sign-in
         const snap = await window._fbFns.getDoc(window._fbFns.doc(window._db, "users", user.uid));
         if (!snap.exists()) {
           await window._fbFns.setDoc(window._fbFns.doc(window._db, "users", user.uid), {
-            name: user.displayName, email: user.email,
+            name: user.displayName || user.email.split('@')[0],
+            email: user.email,
             balance: 1000000, portfolio: [], watchlist: [], alerts: []
           });
         }
-      } catch (e) { setAuthMsg(friendlyErr(e.code)); }
+      } catch (e) {
+        console.error('Google login error:', e);
+        // Ignore popup closed/cancelled errors silently
+        if (e.code === 'auth/popup-closed-by-user' || e.code === 'auth/cancelled-popup-request') return;
+        setAuthMsg(friendlyErr(e.code));
+      }
     }
 
     async function doLogout() { await window._fbFns.signOut(window._auth); }
@@ -2060,11 +2068,17 @@
       return ({
         "auth/user-not-found": "No account found with this email.",
         "auth/wrong-password": "Incorrect password.",
-        "auth/email-already-in-use": "Email already registered.",
+        "auth/invalid-credential": "Invalid email or password.",
+        "auth/email-already-in-use": "Email already registered. Try signing in.",
         "auth/invalid-email": "Invalid email address.",
+        "auth/weak-password": "Password must be at least 6 characters.",
         "auth/popup-closed-by-user": "Google sign-in was cancelled.",
+        "auth/cancelled-popup-request": "Sign-in popup was cancelled.",
+        "auth/popup-blocked": "Popup blocked by browser. Allow popups and try again.",
+        "auth/unauthorized-domain": "This domain is not authorized for sign-in. Add it to Firebase Auth settings.",
         "auth/too-many-requests": "Too many attempts. Try again later.",
-      }[code] || "Something went wrong. Please try again.");
+        "auth/network-request-failed": "Network error. Check your connection.",
+      }[code] || `Something went wrong (${code || 'unknown'}). Please try again.`);
     }
 
     function setAuthMsg(msg) { document.getElementById("authMsg").textContent = msg; }
